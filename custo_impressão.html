@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Analisador de Custo de Impressão</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+
+        #imageUploader {
+            padding: 10px;
+            border: 2px dashed #ccc;
+            background-color: #fff;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+            width: 90%;
+            max-width: 300px;
+        }
+
+        #statusMessage {
+            color: #555;
+            font-style: italic;
+            margin-bottom: 15px;
+        }
+
+        #resultDisplay {
+            color: #007bff;
+            font-size: 2.2em;
+            font-weight: bold;
+            padding: 15px;
+            border: 1px solid #ddd;
+            background-color: #e6f0ff;
+            display: inline-block;
+            margin-top: 15px;
+            border-radius: 5px;
+        }
+
+        #uploadedImage {
+            max-width: 100%;
+            max-height: 250px;
+            object-fit: contain;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        #costDetails {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #c3e6cb;
+            background-color: #e2f0e6;
+            text-align: left;
+            border-radius: 8px;
+        }
+        
+        #costDetails h3 {
+            color: #155724;
+            text-align: center;
+            margin-top: 0;
+            border-bottom: 2px solid #c3e6cb;
+            padding-bottom: 10px;
+        }
+
+        #costDetails p {
+            font-size: 1.1em;
+            margin: 8px 0;
+        }
+
+        .cost-label {
+            font-weight: bold;
+            display: inline-block;
+            width: 150px;
+        }
+
+        .cost-value {
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    
+    <input type="file" id="imageUploader" accept="image/*">
+    <p id="statusMessage">Aguardando arquivo...</p>
+    
+    <div id="imageContainer" style="margin-top: 20px;">
+        <img id="uploadedImage" style="display: none;" alt="Imagem enviada">
+    </div>
+
+    <div id="resultContainer">
+        <h2 id="resultDisplay" style="display: none;"></h2>
+        <div id="costDetails" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const imageUploader = document.getElementById('imageUploader');
+            const uploadedImage = document.getElementById('uploadedImage');
+            const resultDisplay = document.getElementById('resultDisplay');
+            const statusMessage = document.getElementById('statusMessage');
+            const costDetails = document.getElementById('costDetails');
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // --- Dados Financeiros da Tabela (Base de 50% de Cobertura) ---
+            const COST_50_BLACK = 0.175;
+            const COST_50_COLOR = 0.2625;
+            const COST_50_TOTAL = 0.4375;
+            // -----------------------------------------------------------
+
+            imageUploader.addEventListener('change', handleImageUpload);
+
+            function handleImageUpload(event) {
+                // Lógica de carregamento e exibição da imagem...
+                const file = event.target.files[0];
+                if (!file) {
+                    statusMessage.textContent = "Aguardando arquivo...";
+                    uploadedImage.style.display = 'none';
+                    resultDisplay.style.display = 'none';
+                    costDetails.style.display = 'none';
+                    return;
+                }
+
+                statusMessage.textContent = "Carregando imagem...";
+                resultDisplay.style.display = 'none';
+                costDetails.style.display = 'none';
+
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    uploadedImage.src = e.target.result;
+                    uploadedImage.style.display = 'block';
+
+                    uploadedImage.onload = () => {
+                        calculateCost();
+                    };
+                    uploadedImage.onerror = () => {
+                        statusMessage.textContent = "Erro ao carregar a imagem.";
+                        uploadedImage.style.display = 'none';
+                    }
+                };
+
+                reader.readAsDataURL(file);
+            }
+
+            function calculateCost() {
+                statusMessage.textContent = "Analisando...";
+                
+                const threshold = 255; 
+
+                // 1. Configura o Canvas e obtém dados de pixel
+                canvas.width = uploadedImage.naturalWidth;
+                canvas.height = uploadedImage.naturalHeight;
+                ctx.drawImage(uploadedImage, 0, 0);
+                
+                let whitePercentage = 0;
+
+                try {
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data; 
+                    let totalPixels = canvas.width * canvas.height;
+                    let whitePixels = 0;
+
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];     
+                        const g = data[i + 1]; 
+                        const b = data[i + 2]; 
+
+                        // Critério de Intensidade Máxima (R, G, ou B = 255)
+                        if (Math.max(r, g, b) === threshold) {
+                            whitePixels++;
+                        }
+                    }
+
+                    whitePercentage = (whitePixels / totalPixels) * 100;
+
+                } catch (e) {
+                    statusMessage.textContent = `Erro: Não foi possível analisar a imagem.`;
+                    resultDisplay.style.display = 'none';
+                    return;
+                }
+
+                // --- 2. CÁLCULO DE COBERTURA E CUSTO ---
+                
+                // Cobertura de Tinta (o oposto da Porcentagem de Branco)
+                const inkCoveragePercentage = 100 - whitePercentage;
+
+                // Custo por 1% de Cobertura (Custo base / 50)
+                const costPerPercentBlack = COST_50_BLACK / 50;
+                const costPerPercentColor = COST_50_COLOR / 50;
+                const costPerPercentTotal = COST_50_TOTAL / 50;
+                
+                // Custo Total Estimado
+                const estimatedCostBlack = inkCoveragePercentage * costPerPercentBlack;
+                const estimatedCostColor = inkCoveragePercentage * costPerPercentColor;
+                const estimatedCostTotal = inkCoveragePercentage * costPerPercentTotal;
+
+
+                // --- 3. EXIBIÇÃO DE RESULTADOS ---
+
+                statusMessage.textContent = "Análise concluída.";
+                
+                // Exibe a porcentagem de intensidade (branco)
+                resultDisplay.textContent = `Intensidade (Branco): ${whitePercentage.toFixed(2)}%`;
+                resultDisplay.style.display = 'block';
+
+                // Exibe os detalhes de custo
+                costDetails.innerHTML = `
+                    <h3>Estimativa de Custo de Tinta</h3>
+                    <p><span class="cost-label">Cobertura de Tinta:</span> ${inkCoveragePercentage.toFixed(2)}%</p>
+                    <hr>
+                    <p>
+                        <span class="cost-label">Custo PRETO:</span> 
+                        <span class="cost-value">R$ ${estimatedCostBlack.toFixed(4).replace('.', ',')}</span>
+                    </p>
+                    <p>
+                        <span class="cost-label">Custo COLORIDO:</span> 
+                        <span class="cost-value">R$ ${estimatedCostColor.toFixed(4).replace('.', ',')}</span>
+                    </p>
+                    <p>
+                        <span class="cost-label">Custo TOTAL:</span> 
+                        <span class="cost-value">R$ ${estimatedCostTotal.toFixed(4).replace('.', ',')}</span>
+                    </p>
+                `;
+                costDetails.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
